@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock
-from src.ingest.models import Requirement, CodeFile, CodeFunction
+from src.ingest.models import Requirement, CodeFile
 from src.crawl.artifacts import DOMSnapshot, UIElement
 from src.graph.writer import (
     write_requirement,

@@ -14,7 +14,6 @@ from neo4j import GraphDatabase
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from src.ingest.parser import parse_prd
-from src.ingest.code_parser import scan_repository
 from src.crawl.browser_agent import BrowserAgent
 from src.crawl.artifacts import CrawlArtifactBundle, DOMSnapshot
 from src.graph.writer import (
@@ -120,7 +119,7 @@ def main():
             sys.exit(1)
     else:  # lm-studio
         url = args.llm_url or "http://localhost:1234/v1/chat/completions"
-        model = args.llm_model or "gpt-4o"
+        model = args.llm_model
         api_key = args.openai_api_key or os.getenv("OPENAI_API_KEY", "")
         check_lm_studio(url)
 
@@ -129,7 +128,7 @@ def main():
 
     try:
         # ── Stage 1: Ingest PRD ──────────────────────────────────────────
-        print("\n[Stage 1/8] Parsing PRD ...")
+        print("\n[Stage 1/7] Parsing PRD ...")
 
         if not os.path.exists(args.prd):
             print(f"[ERROR] PRD file not found: {args.prd}")
@@ -147,8 +146,12 @@ def main():
                 print(f"    [{r.id}] {r.title}")
 
         # ── Stage 2: Crawl Web App ───────────────────────────────────────
+        # Three crawl modes:
+        #   1. --crawl-fixture <file>   -> Load pre-captured JSON (debug / demo)
+        #   2. --url <url> (no fixture) -> Live Playwright crawl (production)
+        #   3. --no-crawl               -> Skip entirely (use existing graph)
         if args.crawl_fixture:
-            print(f"\n[Stage 2/8] Loading crawl fixture: {args.crawl_fixture}")
+            print(f"\n[Stage 2/7] Loading crawl fixture: {args.crawl_fixture}")
             with open(args.crawl_fixture, "r", encoding="utf-8") as f:
                 fixture_data = json.load(f)
             fixtures_by_url = {}
@@ -161,24 +164,17 @@ def main():
             )
             print(f"  Loaded {len(fixture_data)} UI elements across {len(fixtures_by_url)} pages")
         elif not args.no_crawl:
-            print(f"\n[Stage 2/8] Crawling {args.url} ...")
+            print(f"\n[Stage 2/7] Crawling {args.url} ...")
             agent = BrowserAgent(max_steps=args.max_steps)
             crawl_bundle = agent.run(args.url)
             print(f"  Captured {len(crawl_bundle.snapshots)} DOM snapshots, "
                   f"{len(crawl_bundle.transitions)} transitions")
         else:
             crawl_bundle = None
-            print(f"\n[Stage 2/8] Crawl skipped (--no-crawl)")
+            print(f"\n[Stage 2/7] Crawl skipped (--no-crawl)")
 
-        # ── Stage 3: Scan Codebase ──────────────────────────────────────
-        print("\n[Stage 3/8] Scanning codebase ...")
-        project_root = os.path.abspath(os.path.dirname(__file__))
-        files, functions = scan_repository(project_root)
-        project_files = [f for f in files if f.path.startswith("src")]
-        print(f"  Found {len(project_files)} source files, {len(functions)} functions")
-
-        # ── Stage 4: Write to Neo4j ──────────────────────────────────────
-        print("\n[Stage 4/8] Writing to Neo4j ...")
+        # ── Stage 3: Write to Neo4j ──────────────────────────────────────
+        print("\n[Stage 3/7] Writing to Neo4j ...")
         with driver.session() as session:
             if args.no_crawl:
                 session.run("MATCH (n) DETACH DELETE n")
@@ -186,9 +182,6 @@ def main():
 
             for req in requirements:
                 write_requirement(session, req)
-
-            for cf in project_files:
-                write_code_file(session, cf)
 
             if crawl_bundle:
                 for snap in crawl_bundle.snapshots:
@@ -212,27 +205,23 @@ def main():
 
             ui_count = session.run("MATCH (u:UIElement) RETURN count(u) AS n").single()["n"]
             req_count = session.run("MATCH (r:Requirement) RETURN count(r) AS n").single()["n"]
-            file_count = session.run("MATCH (c:CodeFile) RETURN count(c) AS n").single()["n"]
-            print(f"  Graph: {req_count} reqs, {ui_count} UIs, {file_count} code files")
+            code_count = session.run("MATCH (c:CodeFile) RETURN count(c) AS n").single()["n"]
+            print(f"  Graph: {req_count} reqs, {ui_count} UIs, {code_count} code files")
 
-        # ── Stage 5: Semantic Linking (LLM) ─────────────────────────────
+        # ── Stage 4: Semantic Linking (LLM) ─────────────────────────────
         if not args.no_link:
-            print("\n[Stage 5/8] LLM semantic linking ...")
+            print("\n[Stage 4/7] LLM semantic linking ...")
             with driver.session() as session:
                 link_requirements_to_ui(session)
-                link_code_to_ui(session)
                 covers_count = session.run(
                     "MATCH ()-[c:COVERS]->() RETURN count(c) AS n"
                 ).single()["n"]
-                impl_count = session.run(
-                    "MATCH ()-[i:IMPLEMENTS]->() RETURN count(i) AS n"
-                ).single()["n"]
-                print(f"  Created {covers_count} COVERS edges, {impl_count} IMPLEMENTS edges")
+                print(f"  Created {covers_count} COVERS edges")
         else:
-            print("\n[Stage 5/8] Linking skipped (--no-link)")
+            print("\n[Stage 4/7] Linking skipped (--no-link)")
 
-        # ── Stage 6: Mark Absences ───────────────────────────────────────
-        print("\n[Stage 6/8] Marking coverage gaps ...")
+        # ── Stage 5: Mark Absences ───────────────────────────────────────
+        print("\n[Stage 5/7] Marking coverage gaps ...")
         with driver.session() as session:
             mark_all_absences(session)
             absence_count = session.run(
@@ -240,8 +229,8 @@ def main():
             ).single()["n"]
             print(f"  Found {absence_count} requirement gaps (Absence nodes)")
 
-        # ── Stage 7: Fetch PR & Compute Blast Radius ────────────────────
-        print(f"\n[Stage 7/8] Fetching PR {args.repo}#{args.pr} ...")
+        # ── Stage 6: Fetch PR & Compute Blast Radius ────────────────────
+        print(f"\n[Stage 6/7] Fetching PR {args.repo}#{args.pr} ...")
         try:
             pr = fetch_pr(args.repo, args.pr)
             print(f"  PR #{pr.pr_number} — {len(pr.changed_files)} changed files")
@@ -284,8 +273,8 @@ def main():
         print(f"  Direct: {n_ui} UIs, {n_req} requirements")
         print(f"  Downstream: {n_dn_ui} UIs, {n_dn_req} requirements")
 
-        # ── Stage 8: Generate & Save Report ──────────────────────────────
-        print("\n[Stage 8/8] Generating risk report ...")
+        # ── Stage 7: Generate & Save Report ──────────────────────────────
+        print("\n[Stage 7/7] Generating risk report ...")
         report_text, structured = generate_report(blast_result)
         md_path = save_report(
             report_text,

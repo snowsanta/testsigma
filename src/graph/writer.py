@@ -1,4 +1,4 @@
-from src.ingest.models import Requirement, CodeFile, CodeFunction
+from src.ingest.models import Requirement, CodeFile
 from src.crawl.artifacts import DOMSnapshot, UIElement
 
 def write_requirement(session, requirement: Requirement):

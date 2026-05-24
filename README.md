@@ -9,29 +9,29 @@ An agent that crawls a web application, ingests a product spec, builds a Neo4j k
 ## Architecture
 
 ```
-[PRD Markdown]          [Code Repository]          [GitHub PR]
-      │                       │                        │
-      ▼                       ▼                        │
-┌──────────┐           ┌────────────┐                  │
-│  INGEST  │           │  INGEST    │                  │
-│  parser  │           │ code_parser│                  │
-└────┬─────┘           └─────┬──────┘                  │
-     │                       │                         │
-     ▼                       ▼                         │
-┌──────────────────────────────────────────┐           │
-│            GRAPH LAYER (Neo4j)           │           │
-│  Requirement ─COVERS──► UIElement        │           │
-│  CodeFile ─IMPLEMENTS─► UIElement        │           │
+[PRD Markdown]                              [GitHub PR]
+      │                                          │
+      ▼                                          │
+┌──────────┐                                     │
+│  INGEST  │                                     │
+│  parser  │                                     │
+└────┬─────┘                                     │
+     │                                            │
+     ▼                                            ▼
+┌──────────────────────────────────────────┐  ┌──────────────────┐
+│            GRAPH LAYER (Neo4j)           │  │   PR FETCHER     │
+│  Requirement ─COVERS──► UIElement        │  │  (GitHub API)    │
+│  CodeFile ─IMPLEMENTS─► UIElement        │  └────────┬─────────┘
 │  UIElement ─TRANSITION─► UIElement       │           │
 │  Requirement ─HAS_ABSENCE─► Absence      │           │
 └──────────────┬───────────────────────────┘           │
                │                                       │
                ▼                                       ▼
-┌──────────────────────┐                    ┌──────────────────┐
-│    REASON ENGINE     │◄───────────────────│   PR FETCHER     │
-│  Blast radius query  │                    │  (GitHub API)    │
-└──────────┬───────────┘                    └──────────────────┘
-           ▼
+┌──────────────────────────────────────────────────────┐
+│                  REASON ENGINE                       │
+│               Blast radius query                     │
+└──────────────────────┬───────────────────────────────┘
+                       ▼
 ┌──────────────────────┐
 │   REPORTER (LLM)     │
 │  English risk report │
@@ -56,19 +56,19 @@ The LLM touches exactly three things: parsing intent, judging semantic similarit
 
 ```
 ├── src/
-│   ├── ingest/               # Parse PRDs & code into structured models
-│   │   ├── models.py             # Requirement, CodeFile, CodeFunction dataclasses
-│   │   ├── parser.py             # Markdown PRD → List[Requirement] via LLM
-│   │   └── code_parser.py        # AST-based repository scanner
+│   ├── ingest/               # Parse PRDs into structured requirement models
+│   │   ├── models.py             # Requirement, CodeFile dataclasses
+│   │   └── parser.py             # Markdown PRD → List[Requirement] via LLM
 │   │
 │   ├── crawl/                # Browser automation to capture UI/DOM
 │   │   ├── artifacts.py          # DOMSnapshot, Transition, CrawlArtifactBundle
 │   │   └── browser_agent.py      # Playwright + LLMPlanner agent loop
 │   │
 │   ├── graph/                # Neo4j knowledge graph read/write
-│   │   ├── schema.py             # Node/edge type constants (6 nodes, 7 edges)
+│   │   ├── schema.py             # Node/edge type constants (5 nodes, 5 edges)
 │   │   ├── writer.py             # MERGE-based idempotent writes
 │   │   ├── reader.py             # Multi-hop blast-radius Cypher queries
+│   │   ├── linker.py             # LLM semantic matching → COVERS + IMPLEMENTS edges
 │   │   └── absence.py            # Post-processing: detect uncovered requirements
 │   │
 │   ├── reason/               # Risk reasoning engine
@@ -83,7 +83,7 @@ The LLM touches exactly three things: parsing intent, judging semantic similarit
 │   ├── conftest.py               # Shared fixtures (mock LLM, mock Neo4j)
 │   ├── fixtures/
 │   │   └── sample_prd.md         # 6-requirement sample PRD
-│   ├── ingest/                   # 7 tests for models, parser, code parser
+│   ├── ingest/                   # 5 tests for models, parser
 │   ├── crawl/                    # 6 tests for artifacts, browser agent
 │   ├── graph/                    # 10 tests for writer, reader
 │   ├── reason/                   # 7 tests for PR fetcher, blast radius, reporter
@@ -108,7 +108,6 @@ The LLM touches exactly three things: parsing intent, judging semantic similarit
 | `UIElement` | id, selector, label, url, element_type | UI/DOM |
 | `UserFlow` | id, name, start_url, steps | UI/DOM |
 | `CodeFile` | path, language, last_modified | Code |
-| `CodeFunction` | name, file_path, start_line, end_line | Code |
 
 ### Edge Types
 
@@ -118,8 +117,6 @@ The LLM touches exactly three things: parsing intent, judging semantic similarit
 | `HAS_ABSENCE` | Requirement → Absence | — |
 | `PART_OF` | UIElement → UserFlow | step_order |
 | `IMPLEMENTS` | CodeFile → UIElement | confidence (0–1) |
-| `CALLS` | CodeFunction → CodeFunction | — |
-| `DEFINED_IN` | CodeFunction → CodeFile | — |
 | `TRANSITION` | UIElement → UIElement | action, selector |
 
 ### Absence Modeling
@@ -129,13 +126,12 @@ Requirements with no matching UI coverage get an `Absence` node linked via `HAS_
 ### Blast Radius Query (Multi-Hop)
 
 1. Start from `CodeFile` nodes in the PR's changed file list
-2. Walk `DEFINED_IN` ← to find affected `CodeFunction` nodes
-3. Follow `IMPLEMENTS` → to linked `UIElement` nodes (confidence ≥ threshold)
-4. Follow `COVERS` ← to affected `Requirement` nodes
-5. Traverse `TRANSITION*0..2` → downstream `UIElement` nodes
-6. Follow `COVERS` ← to downstream `Requirement` nodes
-7. Check `HAS_ABSENCE` for coverage gaps
-8. Aggregate distinct results
+2. Follow `IMPLEMENTS` → to linked `UIElement` nodes (confidence ≥ threshold)
+3. Follow `COVERS` ← to affected `Requirement` nodes
+4. Traverse `TRANSITION*0..2` → downstream `UIElement` nodes
+5. Follow `COVERS` ← to downstream `Requirement` nodes
+6. Check `HAS_ABSENCE` for coverage gaps
+7. Aggregate distinct results
 
 ---
 
@@ -185,7 +181,7 @@ python manual_test_pipeline.py
 
 This walks you through the full pipeline interactively:
 1. Parses `tests/fixtures/sample_prd.md` into structured requirements
-2. Scans the `src/` directory for code files and functions
+2. Lists available source files in `src/` for PR simulation selection
 3. Seeds a simulated graph with Requirements, UIElements, COVERS edges, IMPLEMENTS edges, and TRANSITION edges
 4. Lets you pick which file to simulate as changed in a PR
 5. Computes the blast radius
@@ -210,10 +206,20 @@ By default, the pipeline connects to a local **LM Studio** instance at `http://l
 
 * `--llm-provider`: LLM backend to utilize: `lm-studio` (default) or `openai`.
 * `--openai-api-key`: Specifies your OpenAI API key (falls back to the `OPENAI_API_KEY` environment variable if omitted).
-* `--llm-model`: Targets a specific model name (defaults to `gpt-4o` or the LM Studio default).
+* `--llm-model`: Optional. Specifies a model name. When omitted with LM Studio and a single model loaded, the loaded model is auto-selected. For OpenAI, defaults to `gpt-4o`.
 * `--llm-url`: Overrides the target completions URL (useful for local gateways, custom hosting, or OpenAI proxies).
 
-**Example using local LM Studio:**
+**Example using local LM Studio with live crawl:**
+```bash
+python cli.py \
+  --url https://quiz.cudael.dev \
+  --repo Cudael/quiz \
+  --pr 38 \
+  --prd tests/fixtures/sample_prd.md \
+  --llm-provider lm-studio
+```
+
+**Example using a pre-captured crawl fixture (debug/demo):**
 ```bash
 python cli.py \
   --repo Cudael/quiz \
@@ -238,7 +244,7 @@ python cli.py \
 ### Running Tests
 
 ```bash
-# All tests (31 tests)
+# All tests (30 tests)
 python -m pytest tests/ -v
 
 # Unit tests only
@@ -267,13 +273,13 @@ The system handles three failure modes:
 ## Scope Decisions
 
 **Went deep on:**
-- Graph schema (6 node types, 7 edge types, absence as first-class node)
+- Graph schema (5 node types, 5 edge types, absence as first-class node)
 - Blast-radius logic (multi-hop Cypher with confidence filtering, transition traversal)
-- Test coverage (31 tests across 5 modules, test-first development)
+- Test coverage (30 tests across 5 modules, test-first development)
 
 **Scoped down:**
-- Live crawling — browser agent is stubbed; uses pre-captured DOM fixtures
-- Call-graph extraction — uses static file indexing rather than dynamic call traces
+- Live crawling — the browser agent uses a `--crawl-fixture` flag for debug/demo reliability; pass `--url` without `--crawl-fixture` for a live Playwright crawl
+- Function-level call-graph tracing — uses file-level IMPLEMENTS edges rather than function-level CALLS/DEFINED_IN traversal
 
 This is deliberate. The assignment explicitly states: *"A submission that goes deep on two layers and explicitly scopes the third beats a submission that does all three shallowly."*
 
@@ -283,7 +289,7 @@ This is deliberate. The assignment explicitly states: *"A submission that goes d
 
 If the system is run 100 times on the same input:
 
-- **Deterministic layers** (PR fetch, code scan, graph writes, Cypher queries): produce identical output every run — verified by 31 unit/integration tests
+- **Deterministic layers** (PR fetch, graph writes, Cypher queries): produce identical output every run — verified by 30 unit/integration tests
 - **LLM layers** (PRD parsing, semantic linking, report prose): scored via rubric evaluating recall/precision against gold-standard references, plain-English quality, and confidence transparency **(TODO: Currently conceptual framework; see Future Roadmap)**
 
 ---
@@ -296,4 +302,3 @@ If the system is run 100 times on the same input:
 4. **Automated LLM Evaluation Suite (TODO)** — implement the conceptual precision/recall rubric scoring and gold-standard dataset comparisons as an automated CI/CD gate to systematically measure parsing and linking performance.
 
 ---
-

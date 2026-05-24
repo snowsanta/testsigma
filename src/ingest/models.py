@@ -12,10 +12,3 @@ class CodeFile:
     path: str
     language: str
     last_modified: str = ""
-
-@dataclass(frozen=True)
-class CodeFunction:
-    name: str
-    file_path: str
-    start_line: int = 0
-    end_line: int = 0

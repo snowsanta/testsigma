@@ -24,14 +24,13 @@ Everything else — crawling, ingesting, graph construction — is scaffolding t
 flowchart LR
     subgraph INPUT["Inputs"]
         PRD["📄 PRD / README\nMarkdown spec"]
-        REPO["💻 Code Repository\nPython / any language"]
         PR["🔀 GitHub Pull Request\nChanged file list"]
         URL["🌐 Web Application\nLive URL"]
     end
 
     subgraph PIPELINE["Agent Pipeline"]
         direction TB
-        A["① INGEST\nparser.py · code_parser.py"]
+        A["① INGEST\nparser.py"]
         B["② CRAWL\nbrowser_agent.py · artifacts.py"]
         C["③ GRAPH\nwriter.py · linker.py · absence.py"]
         D["④ REASON\npr_fetcher.py · blast_radius.py · reporter.py"]
@@ -42,7 +41,6 @@ flowchart LR
     end
 
     PRD --> A
-    REPO --> A
     URL --> B
     A --> C
     B --> C
@@ -121,14 +119,17 @@ flowchart TD
 | PRD parse → Requirements | `parser.py` | **LLM** | Unstructured markdown; intent and section boundaries require semantic reading |
 | UI crawl → DOM + transitions | `browser_agent.py` | **Hybrid** | Playwright navigation mechanics are deterministic; choosing which element to interact with next requires reasoning about page purpose |
 | Requirement ↔ UI linking | `linker.py` | **LLM** | Judging whether "repository creation form" maps to `#new-repo-btn` requires language-level similarity — no heuristic covers this reliably |
+| Code ↔ UI linking | `linker.py` | **LLM** | Judging whether a code file implements a UI element requires semantic understanding of file names, paths, and content |
 | Blast radius query | `reader.py` | **Deterministic** | Graph traversal is exact; Cypher handles the multi-hop path resolution |
 | Report generation | `reporter.py` | **Hybrid** | Severity classification and table construction are deterministic; converting structured risk data to readable prose for a QA lead requires LLM |
 
 ### The LLM Boundary Rule
 
-The LLM wrapper (`llm/client.py`) is the only place that makes external model calls. Every downstream module patches this single boundary in tests. This means 100% of business logic is unit-testable without live API calls. 
+The LLM wrapper (`llm/client.py`) is the only place that makes external model calls. Every downstream module patches this single boundary in tests. This means 100% of business logic is unit-testable without live API calls.
 
 Swapping model providers (OpenAI ↔ local LM Studio ↔ other compatible API endpoints) is fully supported at runtime via CLI flags (`--llm-provider`, `--openai-api-key`, `--llm-model`, `--llm-url`), configuring the unified `src.llm.client.configure()` interface dynamically at startup.
+
+When `--llm-model` is omitted with LM Studio and a single model is loaded, the model field is omitted from the API payload and LM Studio auto-selects the loaded model.
 
 ---
 
@@ -159,30 +160,16 @@ erDiagram
         string url
         string element_type
     }
-    UserFlow {
-        string id PK
-        string name
-        string start_url
-    }
     CodeFile {
         string path PK
         string language
         string last_modified
     }
-    CodeFunction {
-        string name PK
-        string file_path FK
-        int start_line
-        int end_line
-    }
 
     Requirement ||--o{ Absence : "HAS_ABSENCE"
     Requirement ||--o{ UIElement : "COVERS (confidence)"
-    UIElement ||--o{ UserFlow : "PART_OF (step_order)"
     UIElement ||--o{ UIElement : "TRANSITION (action, selector)"
     CodeFile ||--o{ UIElement : "IMPLEMENTS (confidence)"
-    CodeFunction ||--o{ CodeFunction : "CALLS"
-    CodeFunction ||--|| CodeFile : "DEFINED_IN"
 ```
 
 ### Node Catalogue
@@ -192,9 +179,7 @@ erDiagram
 | `Requirement` | Requirements | `id`, `title`, `source_section`, `raw_text` | What was intended — the source of truth for product behavior |
 | `Absence` | Requirements | `req_id`, `reason`, `confidence`, `created_at` | Requirements with no matching UI coverage — a first-class entity, not a boolean flag |
 | `UIElement` | UI/DOM | `id`, `selector`, `label`, `url`, `element_type` | What was built — interactive elements captured from live crawl |
-| `UserFlow` | UI/DOM | `id`, `name`, `start_url`, `steps` | Sequences of UI interactions representing user journeys |
-| `CodeFile` | Code | `path`, `language`, `last_modified` | How it was built — source files from the repository |
-| `CodeFunction` | Code | `name`, `file_path`, `start_line`, `end_line` | Fine-grained code entities enabling function-level blast radius |
+| `CodeFile` | Code | `path`, `language`, `last_modified` | How it was built — source files changed in a PR |
 
 ### Edge Catalogue
 
@@ -202,11 +187,8 @@ erDiagram
 |---|---|---|---|
 | `COVERS` | Requirement → UIElement | `confidence (0–1)` | LLM-scored semantic link: this UI element implements this requirement |
 | `HAS_ABSENCE` | Requirement → Absence | — | Flags requirements with zero UI coverage after crawl |
-| `PART_OF` | UIElement → UserFlow | `step_order` | Assembles individual elements into navigable user journeys |
 | `TRANSITION` | UIElement → UIElement | `action`, `selector` | Captures screen-to-screen navigation relationships from crawl |
 | `IMPLEMENTS` | CodeFile → UIElement | `confidence (0–1)` | LLM-scored link: this code file implements this UI element |
-| `CALLS` | CodeFunction → CodeFunction | — | Call-graph edge for function-level tracing |
-| `DEFINED_IN` | CodeFunction → CodeFile | — | Maps functions to their containing files |
 
 ### Why Absence Is a First-Class Node
 
@@ -229,7 +211,6 @@ This is the query that justifies the entire schema. Given a list of changed file
 ```mermaid
 flowchart LR
     CF["CodeFile\n(changed in PR)"]
-    FN["CodeFunction\n(defined in file)"]
     UI["UIElement\n(direct impact)"]
     DUI["UIElement\n(downstream,\nvia TRANSITION)"]
     REQ["Requirement\n(direct coverage)"]
@@ -237,14 +218,12 @@ flowchart LR
     ABS["Absence\n(coverage gap)"]
 
     CF -->|"IMPLEMENTS\nconf ≥ threshold"| UI
-    CF -->|"DEFINED_IN ←\nCALLS →"| FN
     UI -->|"TRANSITION\n0..2 hops"| DUI
     UI -->|"COVERS ←"| REQ
     DUI -->|"COVERS ←"| DREQ
     REQ -->|"HAS_ABSENCE"| ABS
 
     style CF fill:#c0392b,stroke:#e74c3c,color:#fff
-    style FN fill:#e67e22,stroke:#f39c12,color:#fff
     style UI fill:#2980b9,stroke:#3498db,color:#fff
     style DUI fill:#1a6695,stroke:#3498db,color:#fff
     style REQ fill:#27ae60,stroke:#2ecc71,color:#fff
@@ -261,7 +240,6 @@ OPTIONAL MATCH (cf)-[impl:IMPLEMENTS]->(ui:UIElement)
   WHERE impl.confidence >= $min_confidence
 OPTIONAL MATCH (ui)<-[cov:COVERS]-(r:Requirement)
   WHERE cov.confidence >= $min_confidence
-OPTIONAL MATCH (ui)-[:PART_OF]->(flow:UserFlow)
 OPTIONAL MATCH (ui)-[:TRANSITION*0..2]->(downstream:UIElement)
 OPTIONAL MATCH (downstream)<-[down_cov:COVERS]-(down_r:Requirement)
   WHERE down_cov.confidence >= $min_confidence
@@ -269,7 +247,6 @@ OPTIONAL MATCH (r)-[:HAS_ABSENCE]->(absence:Absence)
 RETURN
   collect(DISTINCT ui)         AS ui_elements,
   collect(DISTINCT r)          AS requirements,
-  collect(DISTINCT flow)       AS affected_flows,
   collect(DISTINCT absence)    AS absence_nodes,
   collect(DISTINCT downstream) AS downstream_ui_elements,
   collect(DISTINCT down_r)     AS downstream_requirements
@@ -346,11 +323,10 @@ The question: **if we ran this system 100 times on the same input, how do we kno
 flowchart LR
     subgraph DETERMINISTIC["Deterministic Layer — 100% reproducible"]
         D1["PR fetch\n→ identical changed_files"]
-        D2["Code scan (AST)\n→ identical CodeFile + CodeFunction nodes"]
-        D3["Graph writes (MERGE)\n→ idempotent, same graph every run"]
-        D4["Cypher traversal\n→ identical blast radius result struct"]
-        D5["31 unit + integration tests\nverify all of the above"]
-        D1 --> D2 --> D3 --> D4
+        D2["Graph writes (MERGE)\n→ idempotent, same graph every run"]
+        D3["Cypher traversal\n→ identical blast radius result struct"]
+        D4["30 unit + integration tests\nverify all of the above"]
+        D1 --> D2 --> D3
     end
 
     subgraph LLM_LAYER["LLM Layer — probabilistic, scored by rubric"]
@@ -364,7 +340,7 @@ flowchart LR
 
 ### Deterministic Layer Verification
 
-All 31 tests use `unittest.mock.patch` on `src.llm.client.complete` — the single LLM boundary. With the LLM mocked:
+All 30 tests use `unittest.mock.patch` on `src.llm.client.complete` — the single LLM boundary. With the LLM mocked:
 
 - `test_write_requirement_node_creates_node` — asserts exact Cypher MERGE structure and parameter bindings
 - `test_blast_radius_filters_out_low_confidence_edges` — asserts `min_confidence` is passed correctly to the query
@@ -430,17 +406,17 @@ quadrantChart
 
 **Blast-Radius Cypher Query.** Multi-hop traversal with configurable confidence thresholds, downstream TRANSITION propagation (0..2 hops), and OPTIONAL MATCH throughout so partial data always yields a useful result. The query handles five distinct categories of risk in a single database round-trip.
 
-**Test Coverage.** 31 tests across 5 modules, all written test-first per the coding plan. Every LLM call site is mocked at the `llm.client.complete` boundary. The integration test runs the full pipeline with mock dependencies. This means the deterministic core is verifiable without any API keys or running databases.
+**Test Coverage.** 30 tests across 5 modules, all written test-first per the coding plan. Every LLM call site is mocked at the `llm.client.complete` boundary. The integration test runs the full pipeline with mock dependencies. This means the deterministic core is verifiable without any API keys or running databases.
 
 **Report Output Quality.** The reporter produces severity classification, confidence percentages, markdown tables distinguishing direct from downstream impact, and an LLM narrative. The output is genuinely readable by a non-engineer QA lead.
 
 ### What I Scoped Down and Why
 
-**Live crawling replaced by fixture path.** The `BrowserAgent` is fully implemented with Playwright + LLM planner and handles real navigation, error recovery, and URL deduplication. But the CLI's `--crawl-fixture` flag loads a pre-captured JSON file. The reason: live crawling on a public application has non-deterministic timing, bot detection, and network failures that would make a demo fail unpredictably. The fixture path makes the demo reliable. The agent code is real and tested.
+**Live crawling replaced by fixture path for debug/demo.** The `BrowserAgent` is fully implemented with Playwright + LLM planner and handles real navigation, error recovery, and URL deduplication. Pass `--url` without `--crawl-fixture` to trigger a live crawl. The `--crawl-fixture` flag loads a pre-captured JSON file for debug/demo reliability — live crawling on a public application has non-deterministic timing, bot detection, and network failures that would make a demo fail unpredictably. The fixture path makes the demo reliable. The agent code is real and tested.
 
-**`CodeFunction` nodes not written to graph in the main pipeline.** The `code_parser.py` correctly parses function signatures via AST, and `CodeFunction` is in the schema. But the writer pipeline seeds `CodeFile` nodes only — the `DEFINED_IN` and `CALLS` edges are not populated. The blast-radius query works at file granularity. Function-level tracing is the next highest-value addition (see Section 7).
+**CodeFunction and function-level tracing removed.** The `code_parser.py` was removed, `CodeFunction` removed from schema, and `CALLS`/`DEFINED_IN` edges removed. The blast radius operates at file-level granularity via `IMPLEMENTS` edges. Function-level call-graph tracing with `CALLS*` multi-hop traversal is the next highest-value addition (see Section 7). The schema was simplified to eliminate nodes and edges not actively populated by the pipeline.
 
-**`UserFlow` nodes scoped out.** The schema defines them. The implementation uses `TRANSITION` edges between `UIElement` nodes directly, which gives equivalent traversal for blast-radius purposes. `UserFlow` as a named entity adds value for reporting ("the checkout flow is affected") but wasn't necessary for a correct traversal result.
+**`UserFlow` and `PART_OF` removed from active Cypher.** The schema defines `UserFlow` nodes and `PART_OF` edges conceptually, but they are not populated by the current pipeline. The blast radius query uses `TRANSITION` edges between `UIElement` nodes directly, which gives equivalent traversal.
 
 **Screenshot capture not implemented.** The assignment mentions screenshots as a crawl artifact. The `DOMSnapshot` captures HTML and interactive elements, which is what the graph ingestion needs. Screenshots would add value for a human reviewer of the crawl output but not for the downstream graph construction.
 
@@ -479,7 +455,7 @@ gantt
 
 **The problem it solves:** File-level blast radius misses shared utility functions. If `utils/auth.py` is changed and it's called by 12 route handlers, the current system only traces from `utils/auth.py` directly to UI elements — it doesn't traverse the call tree to find all affected callers.
 
-**What to build:** Extend `code_parser.py` to extract `ast.Call` nodes, not just `FunctionDef`. Write `CALLS` and `DEFINED_IN` edges to Neo4j. Update the blast-radius query to start from `CodeFile → DEFINED_IN ← CodeFunction → CALLS* → CodeFunction → DEFINED_IN → CodeFile → IMPLEMENTS → UIElement`.
+**What to build:** Reintroduce `code_parser.py` with `ast.Call` node extraction. Add `CodeFunction` node, `CALLS` and `DEFINED_IN` edges to the schema. Update the blast-radius query to start from `CodeFile → DEFINED_IN ← CodeFunction → CALLS* → CodeFunction → DEFINED_IN → CodeFile → IMPLEMENTS → UIElement`.
 
 **Why this is #2:** Function-level tracing dramatically increases blast-radius accuracy for utility-heavy codebases. It's the difference between "this file is affected" and "these 12 specific functions, called from these 5 routes, are affected."
 
@@ -519,16 +495,12 @@ sequenceDiagram
     LLM-->>INGEST: JSON array of requirements
     INGEST-->>CLI: List[Requirement]
 
-    CLI->>INGEST: scan_repository(root_dir)
-    INGEST-->>CLI: List[CodeFile], List[CodeFunction]
-
     CLI->>CRAWL: BrowserAgent.run(url)
     CRAWL->>LLM: LLMPlanner.next_action(elements)
     LLM-->>CRAWL: {action, selector, reason}
     CRAWL-->>CLI: CrawlArtifactBundle
 
     CLI->>NEO4J: write_requirement() × N
-    CLI->>NEO4J: write_code_file() × N
     CLI->>NEO4J: write_ui_element() × N
     CLI->>NEO4J: write_transition_edge() × N
 
@@ -539,15 +511,18 @@ sequenceDiagram
     LLM-->>LINKER: [{req_id, ui_ids, confidence}]
     LINKER->>NEO4J: write_covers_edge() × N
 
-    LINKER->>LLM: code file → UI match prompt
-    LLM-->>LINKER: [{ui_id, file_paths, confidence}]
-    LINKER->>NEO4J: write_implements_edge() × N
-
     CLI->>NEO4J: mark_all_absences(session)
     Note over NEO4J: MATCH Requirements with no COVERS edges<br/>MERGE Absence nodes + HAS_ABSENCE edges
 
     CLI->>GITHUB: fetch_pr(repo, pr_number)
     GITHUB-->>CLI: List[changed_file_paths]
+
+    CLI->>NEO4J: write_code_file() × N (seed PR files)
+    
+    CLI->>LINKER: link_code_to_ui(session)
+    LINKER->>LLM: code file → UI match prompt
+    LLM-->>LINKER: [{ui_id, file_paths, confidence}]
+    LINKER->>NEO4J: write_implements_edge() × N
 
     CLI->>REASON: BlastRadiusEngine.compute(pr)
     REASON->>NEO4J: multi-hop Cypher query
@@ -565,11 +540,11 @@ sequenceDiagram
 
 ```mermaid
 flowchart TB
-    subgraph UNIT["Unit Tests (28 tests)"]
-        T1["tests/ingest/\ntest_models.py · test_parser.py · test_code_parser.py\n7 tests — models, LLM mock, AST scanning"]
+    subgraph UNIT["Unit Tests (25 tests)"]
+        T1["tests/ingest/\ntest_models.py · test_parser.py\n5 tests — models, LLM mock"]
         T2["tests/crawl/\ntest_artifacts.py · test_browser_agent.py\n6 tests — serialization, Playwright mock, step limit"]
         T3["tests/graph/\ntest_writer.py · test_reader.py\n10 tests — Cypher structure, confidence filtering, absence"]
-        T4["tests/reason/\ntest_pr_fetcher.py · test_blast_radius.py · test_reporter.py\n5 tests — GitHub mock, result struct, prose output"]
+        T4["tests/reason/\ntest_pr_fetcher.py · test_blast_radius.py · test_reporter.py\n7 tests — GitHub mock, result struct, prose output"]
     end
 
     subgraph INTEGRATION["Integration Test (1 test)"]

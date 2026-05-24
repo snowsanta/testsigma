@@ -5,10 +5,9 @@ Real Pipeline Runner — Neo4j (Docker) + LM Studio (localhost:1234)
 Runs the full TestSigma pipeline end-to-end:
 
   1. Ingest     — LLM parses tests/fixtures/sample_prd.md → structured requirements
-  2. Scan Code  — AST scans src/ for Python modules
-  3. Graph      — Writes requirements, code files, UI elements, and edges to Neo4j
-  4. Reason     — Simulates a PR modifying a file, computes blast radius
-  5. Report     — LLM generates plain-English risk report
+  2. Graph      — Writes requirements, UI elements, and edges to Neo4j
+  3. Reason     — Simulates a PR modifying a file, seeds CodeFile nodes, computes blast radius
+  4. Report     — LLM generates plain-English risk report
 """
 
 import os
@@ -44,16 +43,7 @@ print(f"\n[Stage 1 — Ingest] Parsed {len(requirements)} requirements:")
 for req in requirements:
     print(f"  [{req.id}] {req.title}  ({req.source_section})")
 
-# ── Stage 2: Scan codebase ───────────────────────────────────────────────────
-
-from src.ingest.code_parser import scan_repository
-
-print(f"\n[Stage 2 — Scan] Scanning src/ for Python files ...")
-files, functions = scan_repository(os.path.join(os.path.dirname(__file__), "src"))
-project_files = [f for f in files if f.path.startswith("src")]
-print(f"  Found {len(project_files)} source files, {len(functions)} functions")
-
-# ── Stage 3: Write to Neo4j ──────────────────────────────────────────────────
+# ── Stage 2: Write to Neo4j ──────────────────────────────────────────────────
 
 from src.graph.writer import (
     write_requirement, write_code_file,
@@ -64,10 +54,6 @@ with driver.session() as session:
     # Write requirements
     for req in requirements:
         write_requirement(session, req)
-
-    # Write code files
-    for cf in project_files:
-        write_code_file(session, cf)
 
     # Write mock UI elements (simulating crawled DOM)
     ui_elements = [
@@ -87,17 +73,13 @@ with driver.session() as session:
         ("R1", "U_spec_form", 0.95),
         ("R2", "U_scan_btn", 0.90),
         ("R3", "U_blast_panel", 0.85),
-        ("R4", "U_blast_panel", 0.75),
-        ("R5", "U_blast_panel", 0.90),
-        ("R6", "U_report_view", 0.95),
     ]
     for rid, uid, conf in edge_mappings:
         write_covers_edge(session, rid, uid, conf)
 
-    # Wire IMPLEMENTS: code file → UI
+    # Wire IMPLEMENTS: code file → UI (seeded from PR simulation below)
     impl_mappings = [
         ("src/ingest/parser.py", "U_spec_form", 0.95),
-        ("src/ingest/code_parser.py", "U_scan_btn", 0.90),
         ("src/reason/blast_radius.py", "U_blast_panel", 0.95),
         ("src/reason/reporter.py", "U_report_view", 0.95),
     ]
@@ -108,10 +90,10 @@ with driver.session() as session:
     write_transition_edge(session, "U_spec_form", "U_blast_panel", "click", "#next-btn")
     write_transition_edge(session, "U_blast_panel", "U_report_view", "click", "#generate-report-btn")
 
-print(f"[Stage 3 — Graph] Written: {len(requirements)} reqs, {len(project_files)} files, "
+print(f"[Stage 2 — Graph] Written: {len(requirements)} reqs, "
       f"{len(ui_elements)} UIs, {len(edge_mappings)} COVERS, {len(impl_mappings)} IMPLEMENTS, 2 TRANSITIONS")
 
-# ── Stage 4: Simulate PR & Compute Blast Radius ──────────────────────────────
+# ── Stage 3: Simulate PR & Compute Blast Radius ──────────────────────────────
 
 from src.reason.pr_fetcher import PR
 from src.reason.blast_radius import BlastRadiusEngine
@@ -123,17 +105,17 @@ with driver.session() as session:
     engine = BlastRadiusEngine(session=session)
     result = engine.compute(pr, min_confidence=0.6)
 
-print(f"\n[Stage 4 — Blast Radius] PR #42 modifies: {pr.changed_files}")
+print(f"\n[Stage 3 — Blast Radius] PR #42 modifies: {pr.changed_files}")
 print(f"  UI at risk:   {[u.get('selector', u.get('id', '?')) for u in result.ui_elements_at_risk]}")
 print(f"  Reqs hit:     {[r.get('title', r.get('id', '?')) for r in result.affected_requirements]}")
 print(f"  Downstream UI: {[u.get('selector', u.get('id', '?')) for u in result.downstream_ui_elements]}")
 print(f"  Downstream reqs: {[r.get('title', r.get('id', '?')) for r in result.downstream_requirements]}")
 
-# ── Stage 5: Generate Report ─────────────────────────────────────────────────
+# ── Stage 4: Generate Report ─────────────────────────────────────────────────
 
 from src.reason.reporter import generate_report
 
-print(f"\n[Stage 5 — Report] Calling LM Studio at localhost:1234 ...")
+print(f"\n[Stage 4 — Report] Calling LM Studio at localhost:1234 ...")
 report, _ = generate_report(result)
 print("\n" + "=" * 60)
 print(report)

@@ -101,9 +101,8 @@ src.llm.client.complete = smart_llm_complete
 
 # Import actual pipeline modules
 from src.ingest.parser import parse_prd
-from src.ingest.code_parser import scan_repository
 from src.ingest.models import Requirement, CodeFile
-from src.graph.writer import write_requirement, write_code_file, write_covers_edge, write_implements_edge, write_transition_edge
+from src.graph.writer import write_requirement, write_covers_edge, write_implements_edge, write_transition_edge
 from src.reason.pr_fetcher import PR
 from src.reason.blast_radius import BlastRadiusEngine
 from src.reason.reporter import generate_report
@@ -321,25 +320,23 @@ def main():
         # Write requirement to simulated database
         write_requirement(session, req)
         
-    # Step 3: Scan Codebase
-    print("\n--- [Stage 2: Code Scanning & AST Parsing] ---")
+    # Step 3: Collect available source files for PR simulation
+    print("\n--- [Stage 2: Code Files Discovery] ---")
     project_root = os.path.dirname(__file__)
-    print(f"Scanning repository code files under root: {project_root} ...")
-    scanned_files, scanned_functions = scan_repository(project_root)
-    print(f"Scanned {len(scanned_files)} code modules and found {len(scanned_functions)} AST function definitions.")
+    target_files = []
+    for root, dirs, files in os.walk(os.path.join(project_root, "src")):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for f in files:
+            if f.endswith(".py") or f.endswith(".rb"):
+                rel_path = os.path.relpath(os.path.join(root, f), project_root)
+                target_files.append(rel_path)
+    target_files.sort()
     
-    # Write code files to simulated database
-    for cf in scanned_files:
-        write_code_file(session, cf)
-
-    # Filter project-specific python modules (excluding testsigma/venv files)
-    target_files = [f.path for f in scanned_files if not f.path.startswith("testsigma") and f.path.startswith("src")]
-    print("\nRegistered project source modules available for manual modification test:")
+    print("Registered project source modules available for manual modification test:")
     for idx, f in enumerate(target_files):
         print(f"  [{idx + 1}] {f}")
         
     # Step 4: Create Simulated Semantic Graph Relationships (The UI Coverage Mappings)
-    # To mimic what the BrowserAgent crawler and LLM mapping produces:
     print("\n--- [Stage 3: Seeding Semantic UI-Code-Spec Graph Links] ---")
     
     # Write mock UIElements to Graph
@@ -352,20 +349,16 @@ def main():
     write_covers_edge(session, "R1", "U_spec_form", confidence=0.95)
     write_covers_edge(session, "R2", "U_scan_btn", confidence=0.90)
     write_covers_edge(session, "R3", "U_blast_panel", confidence=0.85)
-    write_covers_edge(session, "R4", "U_blast_panel", confidence=0.75)
-    write_covers_edge(session, "R5", "U_blast_panel", confidence=0.90)
-    write_covers_edge(session, "R6", "U_report_view", confidence=0.95)
     
     # Link Code Files to UI Elements (IMPLEMENTS relationship)
     write_implements_edge(session, "src/ingest/parser.py", "U_spec_form", confidence=0.95)
-    write_implements_edge(session, "src/ingest/code_parser.py", "U_scan_btn", confidence=0.90)
     write_implements_edge(session, "src/reason/blast_radius.py", "U_blast_panel", confidence=0.95)
     write_implements_edge(session, "src/reason/reporter.py", "U_report_view", confidence=0.95)
     
     # Map transitions between screens
     write_transition_edge(session, "U_spec_form", "U_blast_panel", action="click", selector="#next-btn")
     write_transition_edge(session, "U_blast_panel", "U_report_view", action="click", selector="#generate-report-btn")
-    print("Successfully mapped 4 UIElements, 6 COVERS edges, 4 IMPLEMENTS edges, and 2 screen TRANSITIONS.")
+    print("Successfully mapped 4 UIElements, 3 COVERS edges, 3 IMPLEMENTS edges, and 2 screen TRANSITIONS.")
 
     # Step 5: Prompt User to select modified files for Pull Request Simulation
     print("\n--- [Stage 4: Pull Request Simulation] ---")
