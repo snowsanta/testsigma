@@ -375,6 +375,9 @@ If deterministic layers produce the same output on the same input 100/100 times,
 
 ### LLM Layer Scoring Rubric
 
+> [!NOTE]
+> The LLM Layer Scoring Rubric detailed below represents a conceptual evaluation framework (TODO). It defines the recommended guidelines for continuous evaluation in a production environment, but is not yet implemented as automated validation code in the current codebase.
+
 **PRD Parsing (Ingest):**
 - Recall: what fraction of hand-labeled requirements were extracted?
 - Precision: what fraction of extracted requirements are genuine?
@@ -487,6 +490,14 @@ gantt
 **What to build:** A lightweight graph editor UI showing the COVERS and IMPLEMENTS edges with their confidence scores. Engineers click to promote, demote, or delete links. Accepted corrections are written back to Neo4j and used as few-shot examples for the next linking run.
 
 **Why this is #3:** It closes the accuracy feedback loop without requiring manual re-running of the full pipeline. Over time, the system's precision improves on the specific codebase it's calibrated for.
+
+### Priority 4 — Automated LLM Evaluation Suite (TODO)
+
+**The problem it solves:** Without automated tracking of LLM semantic parser and linker changes, adjustments to model prompts, configuration thresholds, or core model engines can cause silent recall and precision regressions that are extremely hard to detect.
+
+**What to build:** An automated pipeline regression runner that executes the LLM parser and linker over "gold-standard" benchmark datasets (hand-labeled PRD specs and Requirement ↔ UI mapping assertions). The runner outputs detailed precision, recall, and false-negative metrics, serving as an automated CI/CD quality gate to block regressions.
+
+**Why this is #4:** It shifts evaluation from subjective manual reviews to systematic, quantitative metrics, ensuring that LLM behaviors are fully auditable and continuously measured.
 
 ---
 

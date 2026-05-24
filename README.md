@@ -284,7 +284,7 @@ This is deliberate. The assignment explicitly states: *"A submission that goes d
 If the system is run 100 times on the same input:
 
 - **Deterministic layers** (PR fetch, code scan, graph writes, Cypher queries): produce identical output every run — verified by 31 unit/integration tests
-- **LLM layers** (PRD parsing, semantic linking, report prose): scored via rubric evaluating recall/precision against gold-standard references, plain-English quality, and confidence transparency
+- **LLM layers** (PRD parsing, semantic linking, report prose): scored via rubric evaluating recall/precision against gold-standard references, plain-English quality, and confidence transparency **(TODO: Currently conceptual framework; see Future Roadmap)**
 
 ---
 
@@ -293,6 +293,7 @@ If the system is run 100 times on the same input:
 1. **Webhook-triggered live crawling** — automatically re-crawl on PR events to keep the graph aligned with the live application state
 2. **Dynamic call-graph analysis** — parse function call trees to trace code impact beyond file-level mapping
 3. **Interactive confidence calibration UI** — let engineers adjust semantic links directly in a visual graph editor, feeding back into the model's accuracy
+4. **Automated LLM Evaluation Suite (TODO)** — implement the conceptual precision/recall rubric scoring and gold-standard dataset comparisons as an automated CI/CD gate to systematically measure parsing and linking performance.
 
 ---
 
