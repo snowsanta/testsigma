@@ -1,0 +1,104 @@
+{
+  "direct_ui": [
+    {
+      "id": "U_spec_input",
+      "selector": "input[type=file]",
+      "label": "Upload Spec File Input",
+      "url": "/studio/upload",
+      "confidence": 1.0
+    },
+    {
+      "id": "U_import_btn",
+      "selector": "#import-prd",
+      "label": "Import PRD Spec Button",
+      "url": "/studio/upload",
+      "confidence": 1.0
+    },
+    {
+      "id": "U_publish_dropzone",
+      "selector": ".step-publish .image-upload-dropzone",
+      "label": "Publish Step Cover Image Upload",
+      "url": "/studio/publish",
+      "confidence": 1.0
+    },
+    {
+      "id": "U_cover_dropzone",
+      "selector": ".image-upload-dropzone",
+      "label": "Quiz Cover Image Upload Dropzone",
+      "url": "/studio/quiz",
+      "confidence": 1.0
+    },
+    {
+      "id": "U_question_dropzone",
+      "selector": ".question-card .image-upload-dropzone",
+      "label": "Question Image Upload Dropzone",
+      "url": "/studio/quiz",
+      "confidence": 1.0
+    },
+    {
+      "id": "U_url_input",
+      "selector": "#image-url-input",
+      "label": "Cover Image URL Text Input",
+      "url": "/studio/quiz",
+      "confidence": 1.0
+    },
+    {
+      "id": "U_question_preview",
+      "selector": ".question-card .image-preview img",
+      "label": "Question Image Preview",
+      "url": "/studio/quiz",
+      "confidence": 1.0
+    },
+    {
+      "id": "U_publish_btn",
+      "selector": "#publish-quiz",
+      "label": "Publish Quiz Button",
+      "url": "/studio/quiz",
+      "confidence": 1.0
+    }
+  ],
+  "direct_reqs": [
+    {
+      "id": "R1",
+      "title": "Markdown PRD Upload",
+      "source_section": "In-Memory Spec Features",
+      "confidence": 1.0
+    },
+    {
+      "id": "R1",
+      "title": "Markdown PRD Upload",
+      "source_section": "In-Memory Spec Features",
+      "confidence": 1.0
+    },
+    {
+      "id": "R2",
+      "title": "Image Assets Customization",
+      "source_section": "Quiz Features",
+      "confidence": 1.0
+    },
+    {
+      "id": "R2",
+      "title": "Image Assets Customization",
+      "source_section": "Quiz Features",
+      "confidence": 1.0
+    },
+    {
+      "id": "R2",
+      "title": "Image Assets Customization",
+      "source_section": "Quiz Features",
+      "confidence": 1.0
+    },
+    {
+      "id": "R3",
+      "title": "Static Image URLs Linking",
+      "source_section": "Quiz Features",
+      "confidence": 1.0
+    }
+  ],
+  "downstream_ui": [],
+  "downstream_reqs": [],
+  "low_confidence_count": 0,
+  "total_edges": 14,
+  "confidence_pct": 100,
+  "severity": "Critical"
+}
