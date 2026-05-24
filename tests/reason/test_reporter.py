@@ -15,17 +15,17 @@ def sample_blast_radius_result():
 def test_reporter_returns_non_empty_string(sample_blast_radius_result, mock_llm_client):
     mock_llm_client.return_value = "This change is localized to the Repository creation panel."
     
-    report = generate_report(sample_blast_radius_result)
+    report, structured = generate_report(sample_blast_radius_result)
     
     assert isinstance(report, str)
     assert len(report) > 0
+    assert isinstance(structured, dict)
 
 def test_reporter_does_not_expose_cypher_or_ids(sample_blast_radius_result, mock_llm_client):
     mock_llm_client.return_value = "Risk affects: Repository creation panel. Downstream: Repository name input."
     
-    report = generate_report(sample_blast_radius_result)
+    report, _ = generate_report(sample_blast_radius_result)
     
-    # Confirm report is purely high-level prose
     assert "MATCH" not in report
     assert "MERGE" not in report
     assert "neo4j" not in report.lower()
@@ -39,5 +39,5 @@ def test_reporter_handles_empty_blast_radius(mock_llm_client):
     )
     mock_llm_client.return_value = "No user-facing flows or specification requirements are affected by this change."
     
-    report = generate_report(empty)
+    report, _ = generate_report(empty)
     assert "no" in report.lower() or "not affect" in report.lower()

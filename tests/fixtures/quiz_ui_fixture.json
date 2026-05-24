@@ -1,0 +1,17 @@
+[
+  {"id": "U_import_prd", "selector": "#import-prd", "label": "Import PRD Spec Button", "url": "https://quiz-app.local/studio", "tag": "button", "element_type": "button"},
+  {"id": "U_upload_spec", "selector": "input[type=file]", "label": "Upload Spec File Input", "url": "https://quiz-app.local/studio", "tag": "input", "element_type": "input"},
+  {"id": "U_cover_image_dropzone", "selector": ".image-upload-dropzone", "label": "Quiz Cover Image Upload Dropzone", "url": "https://quiz-app.local/studio/step-meta", "tag": "div", "element_type": "div"},
+  {"id": "U_cover_image_url_input", "selector": "#image-url-input", "label": "Cover Image URL Text Input", "url": "https://quiz-app.local/studio/step-meta", "tag": "input", "element_type": "input"},
+  {"id": "U_cover_image_preview", "selector": ".image-preview img", "label": "Cover Image Preview", "url": "https://quiz-app.local/studio/step-meta", "tag": "img", "element_type": "img"},
+  {"id": "U_replace_btn", "selector": ".image-upload-replace", "label": "Replace Image Button", "url": "https://quiz-app.local/studio/step-meta", "tag": "button", "element_type": "button"},
+  {"id": "U_remove_btn", "selector": ".image-upload-remove", "label": "Remove Image Button", "url": "https://quiz-app.local/studio/step-meta", "tag": "button", "element_type": "button"},
+  {"id": "U_question_image_upload", "selector": ".question-card .image-upload-dropzone", "label": "Question Image Upload Dropzone", "url": "https://quiz-app.local/studio/question-card", "tag": "div", "element_type": "div"},
+  {"id": "U_question_image_preview", "selector": ".question-card .image-preview img", "label": "Question Image Preview", "url": "https://quiz-app.local/studio/question-card", "tag": "img", "element_type": "img"},
+  {"id": "U_publish_cover_upload", "selector": ".step-publish .image-upload-dropzone", "label": "Publish Step Cover Image Upload", "url": "https://quiz-app.local/studio/publish", "tag": "div", "element_type": "div"},
+  {"id": "U_publish_btn", "selector": "#publish-quiz", "label": "Publish Quiz Button", "url": "https://quiz-app.local/studio/publish", "tag": "button", "element_type": "button"},
+  {"id": "U_play_now_btn", "selector": "#play-now", "label": "Play Now Button", "url": "https://quiz-app.local/", "tag": "button", "element_type": "button"},
+  {"id": "U_theme_toggle", "selector": "#theme-toggle", "label": "Theme Toggle Button", "url": "https://quiz-app.local/", "tag": "button", "element_type": "button"},
+  {"id": "U_navbar", "selector": "nav", "label": "Navigation Bar", "url": "https://quiz-app.local/", "tag": "nav", "element_type": "nav"},
+  {"id": "U_footer", "selector": "footer", "label": "Site Footer", "url": "https://quiz-app.local/", "tag": "footer", "element_type": "footer"}
+]
