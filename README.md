@@ -235,56 +235,6 @@ python cli.py \
   --llm-model "gpt-4o"
 ```
 
-### Running with Real Neo4j
-
-```python
-from neo4j import GraphDatabase
-from src.ingest.parser import parse_prd
-from src.ingest.code_parser import scan_repository
-from src.graph.writer import (
-    write_requirement, write_code_file, write_covers_edge,
-    write_implements_edge, write_transition_edge, write_ui_element
-)
-from src.graph.absence import mark_all_absences
-from src.reason.pr_fetcher import fetch_pr
-from src.reason.blast_radius import BlastRadiusEngine
-from src.reason.reporter import generate_report
-
-# Connect to Neo4j
-driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "password"))
-
-with driver.session() as session:
-    # 1. Ingest requirements
-    with open("tests/fixtures/sample_prd.md") as f:
-        prd_content = f.read()
-    for req in parse_prd(prd_content):
-        write_requirement(session, req)
-
-    # 2. Scan code and write to graph
-    files, functions = scan_repository("src/")
-    for cf in files:
-        write_code_file(session, cf)
-
-    # 3. Add UI elements and edges (from crawl or fixtures)
-    write_ui_element(session, UIElement(id="U1", selector="#btn", label="Submit", url="/submit"))
-    write_covers_edge(session, "R1", "U1", confidence=0.95)
-    write_implements_edge(session, "src/ingest/parser.py", "U1", confidence=0.90)
-
-    # 4. Detect absent requirements
-    mark_all_absences(session)
-
-    # 5. Fetch a real PR and compute blast radius
-    pr = fetch_pr("owner/repo", pr_number=42)
-    engine = BlastRadiusEngine(session)
-    result = engine.compute(pr, min_confidence=0.6)
-
-    # 6. Generate the QA report
-    report = generate_report(result)
-    print(report)
-
-driver.close()
-```
-
 ### Running Tests
 
 ```bash
@@ -346,11 +296,3 @@ If the system is run 100 times on the same input:
 
 ---
 
-## Deliverables Checklist
-
-- [x] Working agent with all four stages (crawl, ingest, graph, reason)
-- [x] 31 passing tests (unit + integration)
-- [x] Design document plan (`design_doc_plan.md`)
-- [x] In-memory test harness for zero-dependency pipeline demo
-- [ ] Final design document (PDF, 8–12 pages)
-- [ ] Sample blast-radius output for a real PR
